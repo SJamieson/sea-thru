@@ -8,6 +8,7 @@ import scipy.optimize
 import scipy.stats
 import math
 from PIL import Image
+from time import time
 import rawpy
 import matplotlib
 from matplotlib import pyplot as plt
@@ -392,6 +393,7 @@ def run_pipeline(img, depths, args):
         plt.title('Depth Map')
         plt.show()
 
+    start_bs = time()
     print('Estimating backscatter...', flush=True)
     ptsR, ptsG, ptsB = find_backscatter_estimation_points(img, depths, fraction=0.01, min_depth_percent=args.min_depth)
 
@@ -399,6 +401,7 @@ def run_pipeline(img, depths, args):
     Br, coefsR = find_backscatter_values(ptsR, depths, restarts=25)
     Bg, coefsG = find_backscatter_values(ptsG, depths, restarts=25)
     Bb, coefsB = find_backscatter_values(ptsB, depths, restarts=25)
+    bs_time = time() - start_bs
 
     if args.output_graphs:
         print('Coefficients: \n{}\n{}\n{}'.format(coefsR, coefsG, coefsB), flush=True)
@@ -430,6 +433,7 @@ def run_pipeline(img, depths, args):
         plt.savefig('Bc_values.png')
         plt.show()
 
+    start_at = time()
     print('Constructing neighborhood map...', flush=True)
     nmap, _ = construct_neighborhood_map(depths, 0.1)
 
@@ -457,6 +461,7 @@ def run_pipeline(img, depths, args):
     refined_beta_D_g, coefsG = refine_wideband_attentuation(depths, illG, beta_D_g, radius_fraction=args.spread_data_fraction, l=args.l)
     beta_D_b, _ = estimate_wideband_attentuation(depths, illB)
     refined_beta_D_b, coefsB = refine_wideband_attentuation(depths, illB, beta_D_b, radius_fraction=args.spread_data_fraction, l=args.l)
+    at_time = time() - start_at
 
     if args.output_graphs:
         print('Coefficients: \n{}\n{}\n{}'.format(coefsR, coefsG, coefsB), flush=True)
@@ -497,11 +502,14 @@ def run_pipeline(img, depths, args):
         plt.savefig('betaD_values.png')
         plt.show()
 
+    reconstruct_start = time()
     print('Reconstructing image...', flush=True)
     B = np.stack([Br, Bg, Bb], axis=2)
     beta_D = np.stack([refined_beta_D_r, refined_beta_D_g, refined_beta_D_b], axis=2)
     recovered = recover_image(img, depths, B, beta_D, nmap)
-
+    reconstruction_time = time() - reconstruct_start
+    print(img.shape[0], img.shape[1], img.shape[1] * img.shape[0])
+    print("Total: %f ms (BS: %f, AT: %f, Recon: %f)" % (at_time + bs_time, bs_time, at_time, reconstruction_time))
 
     if args.output_graphs:
         beta_D = (beta_D - np.min(beta_D)) / (np.max(beta_D) - np.min(beta_D))
